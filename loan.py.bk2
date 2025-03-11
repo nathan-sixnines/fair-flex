@@ -1,0 +1,125 @@
+import numpy as np
+from elements import Payment, Party
+import copy
+
+class AmortizationTable:
+    def __init__(self, schedule):
+        self.schedule = schedule  
+
+    def __repr__(self):
+        output = ["Payment # | Total Payment | Principal | Interest | Extra Payment | Remaining Balance"]
+        for row in self.schedule:
+            output.append(f"{row[0]:9} | {row[1]:13.2f} | {row[2]:9.2f} | {row[3]:8.2f} | {row[4]:13.2f} | {row[5]:17.2f}")
+        return "\n".join(output)
+
+    def __eq__(self, other):
+        if not isinstance(other, AmortizationTable):
+            return False
+        return self.schedule == other.schedule
+
+class MortgageSlice:
+    def __init__(self, principal, annual_rate, total_periods, start_period=1, extra_payments=None):
+        self.principal = principal
+        self.annual_rate = annual_rate
+        self.total_periods = total_periods
+        self.start_period = start_period
+        self.monthly_rate = annual_rate / 12
+        self.payment_periods = total_periods - start_period + 1
+        self.extra_payments = extra_payments if extra_payments else {}
+        self.initial_payment = self.calculate_payment(self.principal, self.payment_periods)
+        self.schedule = self._generate_amortization_schedule(self.extra_payments)
+
+    def __repr__(self):
+        return (f"MortgageSlice(principal={self.principal:.2f}, annual_rate={self.annual_rate:.4f}, "
+                f"total_periods={self.total_periods}, start_period={self.start_period}, "
+                f"monthly_payment={self.initial_payment:.2f}, remaining_balance={self.schedule.schedule[-1][-1]:.2f})")
+    
+    def calculate_payment(self, principal, payment_periods):
+        return (self.monthly_rate * principal) / (1 - (1 + self.monthly_rate) ** -payment_periods)
+    
+    def _generate_amortization_schedule(self, extra_payments):
+        balance = self.principal
+        schedule = []
+        fixed_payment = self.initial_payment  # Use a fixed starting payment
+
+        for i in range(1, self.start_period):
+            schedule.append((i, 0, 0, 0, 0, 0))
+
+        for i in range(self.start_period, self.total_periods + 1):
+            interest = balance * self.monthly_rate
+            principal = fixed_payment - interest
+            extra_payment = extra_payments.get(i, 0)
+            balance -= (principal + extra_payment)
+            schedule.append((i, fixed_payment, principal, interest, extra_payment, max(0, balance)))
+
+        return AmortizationTable(schedule)
+    
+    def add_extra_payment(self, payment: Payment):
+        updated_extra_payments = copy.deepcopy(self.extra_payments)
+        updated_extra_payments[payment.period] = updated_extra_payments.get(payment.period, 0) + payment.amount
+        return MortgageSlice(
+            self.principal,
+            self.annual_rate,
+            self.total_periods,
+            self.start_period,
+            updated_extra_payments
+        )
+
+    @staticmethod
+    def combine_loans(loans):
+        combined_schedule = {}
+        
+        for loan in loans:
+            for entry in loan.schedule.schedule:
+                payment_num, total_payment, principal, interest, extra_payment, balance = entry
+                if payment_num not in combined_schedule:
+                    combined_schedule[payment_num] = [0, 0, 0, 0, 0]
+                
+                combined_schedule[payment_num][0] += total_payment
+                combined_schedule[payment_num][1] += principal
+                combined_schedule[payment_num][2] += interest
+                combined_schedule[payment_num][3] += extra_payment
+                combined_schedule[payment_num][4] += balance
+        
+        sorted_schedule = [(k, *v) for k, v in sorted(combined_schedule.items())]
+        return AmortizationTable(sorted_schedule)
+
+if __name__ == "__main__":
+
+
+    sender = Party("Borrower")
+    recipient = Party("Lender")
+    
+    extra_payments = [
+        Payment(amount=5000, sender=sender, recipient=recipient, period=5)
+    ]
+    
+    interest_rate = 0.5
+    loan_a = MortgageSlice(principal=100000, annual_rate=interest_rate, total_periods=10)
+
+    print(loan_a._generate_amortization_schedule())
+    print(loan_a.schedule)
+
+    for payment in extra_payments:
+        loan_a.add_extra_payment(payment)
+
+    print(loan_a._generate_amortization_schedule())
+    print(loan_a.schedule)
+    
+
+    print("Scenario 1: MortgageSlice (A) With Extra Payments")
+    print(loan_a.schedule)
+    
+    loans_only_extra = [
+        MortgageSlice(principal=-payment.amount, annual_rate=interest_rate, total_periods=10, start_period=payment.period + 1)
+        for payment in extra_payments
+    ]
+    
+    print("\nScenario 3: New MortgageSlices Equivalent to Extra Payments")
+    print(MortgageSlice.combine_loans(loans_only_extra))
+    
+    loan_b = MortgageSlice(principal=100000, annual_rate=interest_rate, total_periods=10)
+    loans = [loan_b] + loans_only_extra
+    
+    print("\nScenario 4: MortgageSlice (B) Combined with Extra Payment MortgageSlices")
+    print(MortgageSlice.combine_loans(loans))

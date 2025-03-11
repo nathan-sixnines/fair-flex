@@ -1,0 +1,42 @@
+from enum import Enum
+from loan import MortgageSlice
+from stake import Stake
+from elements import Payment, Party
+
+class MortgageSliceType(Enum):
+    FIXED = "Fixed"
+    FLEXIBLE = "Flexible"
+
+
+class MortgageSlice:
+    """Represents a financial MortgageSlice of a stake, which can be Fixed or Flexible."""
+    def __init__(self, stake: 'Stake', loan: 'MortgageSlice', MortgageSlice_type: MortgageSliceType):
+        if MortgageSlice_type not in (MortgageSliceType.FIXED, MortgageSliceType.FLEXIBLE):
+            raise ValueError("MortgageSlice type must be 'Fixed' or 'Flexible'.")
+        self.stake = stake
+        self.MortgageSlice_type = MortgageSlice_type
+        self.baseline_loan = loan
+        self.adjusted_loan = loan  # Initially, adjusted loan is the same as baseline
+        self.adjustment_verification = [] if MortgageSlice_type == MortgageSliceType.FLEXIBLE else None
+
+
+    def get_amortization_schedule(self):
+        """Returns the amortization schedule."""
+        
+        if self.MortgageSliceType == MortgageSliceType.FIXED:
+            return self.baseline_loan.generate_amortization_schedule()
+        if self/MortgageSliceType == MortgageSliceType.FLEXIBLE:
+            adjusted_schedule = self.adjusted_loan.generate_amortization_schedule()
+            verification_schedule = MortgageSlice.combine_loans(self.adjustment_verification)
+            if adjusted_schedule != verification_schedule:
+                raise ValueError("Adjustment verification failed: Amortization tables do not match.")
+            return self.adjusted_loan.schedule
+        
+    
+    def add_adjustment_loan(self, loan: 'MortgageSlice'):
+        """Add an adjustment loan to modify the flexible MortgageSlice."""
+        if self.MortgageSlice_type != MortgageSliceType.FLEXIBLE:
+            raise ValueError("Only flexible MortgageSlices can have adjustment loans.")
+        self.adjustment_verification.append(loan)
+
+    
